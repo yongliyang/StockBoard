@@ -9,6 +9,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol') || 'AAPL';
   const interval = searchParams.get('interval') || 'daily';
+  const market = searchParams.get('market') || '';
+  const originalSymbol = searchParams.get('originalSymbol') || '';
 
   const cacheKey = `${symbol}-${interval}`;
   const cached = cache.get(cacheKey);
@@ -16,7 +18,7 @@ export async function GET(request: Request) {
     return NextResponse.json(cached.data);
   }
 
-  // 1. Alpha Vantage
+  // 1. Alpha Vantage (US 股票/ETF + 部分国际股票)
   if (AV_API_KEY && AV_API_KEY !== 'demo') {
     try {
       const avResult = await fetchAlphaVantage(symbol, interval, AV_API_KEY);
@@ -25,11 +27,24 @@ export async function GET(request: Request) {
         return NextResponse.json(avResult);
       }
     } catch (e) {
-      console.warn('Alpha Vantage 失败');
+      console.warn(`Alpha Vantage 失败: ${symbol}`);
     }
   }
 
-  // 2. EODHD Demo
+  // 2. stock-sdk fallback (A股指数/港股指数)
+  if (market === 'SH' || market === 'SZ' || market === 'HK') {
+    try {
+      const sdkResult = await fetchViaStockSDK(originalSymbol || symbol, interval, market);
+      if (sdkResult) {
+        cache.set(cacheKey, { data: sdkResult, timestamp: Date.now() });
+        return NextResponse.json(sdkResult);
+      }
+    } catch (e) {
+      console.warn(`stock-sdk 失败: ${symbol}`);
+    }
+  }
+
+  // 3. EODHD Demo (仅 US)
   try {
     const publicResult = await fetchPublicEODHD(symbol, interval);
     if (publicResult) {
@@ -40,17 +55,17 @@ export async function GET(request: Request) {
     console.warn('公开 API 失败');
   }
 
-  // 3. 最终失败，不返回 mock 数据
-  return NextResponse.json({ 
+  // 4. 最终失败
+  return NextResponse.json({
     error: '无法获取真实市场数据，请检查 API 配置或稍后再试。',
-    history: [] 
+    history: []
   }, { status: 200 });
 }
 
 async function fetchAlphaVantage(symbol: string, interval: string, apiKey: string) {
   const functionName = interval === 'monthly' ? 'TIME_SERIES_MONTHLY' : interval === 'weekly' ? 'TIME_SERIES_WEEKLY' : 'TIME_SERIES_DAILY';
   const url = `https://www.alphavantage.co/query?function=${functionName}&symbol=${symbol}&apikey=${apiKey}`;
-  
+
   const response = await fetch(url);
   const data = await response.json();
 
@@ -73,12 +88,42 @@ async function fetchAlphaVantage(symbol: string, interval: string, apiKey: strin
   };
 }
 
+async function fetchViaStockSDK(symbol: string, interval: string, market: string) {
+  const { StockSDK } = await import('stock-sdk');
+  const sdk = new StockSDK();
+
+  const periodMap: Record<string, 'daily' | 'weekly' | 'monthly'> = {
+    daily: 'daily',
+    weekly: 'weekly',
+    monthly: 'monthly',
+  };
+  const period = periodMap[interval] || 'daily';
+
+  if (market === 'HK') {
+    const kline = await sdk.getHKHistoryKline(symbol, { period, count: 520 } as any);
+    if (!Array.isArray(kline) || kline.length === 0) return null;
+    return {
+      history: kline.map((item: any) => ({ date: item.date, price: item.close })),
+      volume: '--',
+    };
+  }
+
+  // SH / SZ: use A-share history K-line with exchange prefix
+  const prefix = market === 'SH' ? 'sh' : 'sz';
+  const kline = await sdk.getHistoryKline(`${prefix}${symbol}`, { period, count: 520 } as any);
+  if (!Array.isArray(kline) || kline.length === 0) return null;
+  return {
+    history: kline.map((item: any) => ({ date: item.date, price: item.close })),
+    volume: '--',
+  };
+}
+
 async function fetchPublicEODHD(symbol: string, interval: string) {
   const url = `https://eodhd.com/api/eod/${symbol}.US?api_token=demo&fmt=json`;
-  
+
   const response = await fetch(url);
   if (!response.ok) return null;
-  
+
   const data = await response.json();
   if (!Array.isArray(data) || data.length === 0) return null;
 
