@@ -146,17 +146,49 @@ export default function Home() {
   // 设置自定义基准并立即获取数据
   const handleSetBenchmark = useCallback(async (symbol: string, benchmarkSymbol: string) => {
     const bs = benchmarkSymbol.toUpperCase().trim();
-    if (!bs) return;
 
-    setCustomBenchmarks(prev => ({ ...prev, [symbol]: bs }));
+    // 清除输入状态
     setBenchmarkInputs(prev => { const next = { ...prev }; delete next[symbol]; return next; });
 
-    const result = await fetchIndustryBenchmark(symbol, timeFrame, bs);
-    setStocks(prev => prev.map(s =>
-      s.symbol === symbol
-        ? { ...s, industryBenchmark: result.history, industryBenchmarkName: result.name || bs }
-        : s
-    ));
+    if (!bs) {
+      // 用户清空了输入 → 删除该股票的自定义基准
+      setCustomBenchmarks(prev => {
+        const next = { ...prev };
+        delete next[symbol];
+        return next;
+      });
+      setStocks(prev => prev.map(s =>
+        s.symbol === symbol
+          ? { ...s, industryBenchmark: [], industryBenchmarkName: undefined }
+          : s
+      ));
+      return;
+    }
+
+    // 如果基准代码变了，清除旧缓存
+    const oldBenchmark = customBenchmarksRef.current[symbol];
+    if (oldBenchmark && oldBenchmark !== bs) {
+      const oldKey = `${symbol}-${timeFrameRef.current}-benchmark-${oldBenchmark}`;
+      if (dataCache.current[oldKey]) delete dataCache.current[oldKey];
+    }
+
+    setCustomBenchmarks(prev => ({ ...prev, [symbol]: bs }));
+    // 同步更新 ref，确保后续 retryStock 能读到最新值（无需等待 re-render）
+    customBenchmarksRef.current = { ...customBenchmarksRef.current, [symbol]: bs };
+
+    // 使用缓存封装版，bypass=true 确保实际调用 API
+    const result = await fetchBenchmarkCached(symbol, bs, true);
+    if (result.history.length > 0) {
+      setStocks(prev => prev.map(s =>
+        s.symbol === symbol
+          ? { ...s, industryBenchmark: result.history, industryBenchmarkName: result.name || bs }
+          : s
+      ));
+    } else {
+      // API 暂时失败 → 重置重试计数并启动退避重试
+      retryCounts.current[symbol] = 0;
+      retryStock(symbol);
+    }
   }, [timeFrame, setCustomBenchmarks]);
 
   const handleRefresh = useCallback(() => {
@@ -671,23 +703,35 @@ export default function Home() {
                                 {stock.industryBenchmark.length} 个交易日
                               </span>
                             </div>
+                          ) : customBenchmarks[stock.symbol] ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] font-bold text-alpha truncate leading-tight">
+                                {customBenchmarks[stock.symbol]}
+                              </span>
+                              <span className="text-[9px] text-text-muted font-medium leading-tight">
+                                加载中...
+                              </span>
+                            </div>
                           ) : (
                             <div className="flex items-center gap-1">
                               <input
                                 type="text"
                                 placeholder="输入基准代码"
-                                value={benchmarkInputs[stock.symbol] || customBenchmarks[stock.symbol] || ''}
+                                value={stock.symbol in benchmarkInputs ? benchmarkInputs[stock.symbol] : (customBenchmarks[stock.symbol] || '')}
                                 onChange={e => setBenchmarkInputs(prev => ({ ...prev, [stock.symbol]: e.target.value.toUpperCase() }))}
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') {
-                                    handleSetBenchmark(stock.symbol, (e.target as HTMLInputElement).value);
+                                    const currentVal = benchmarkInputs[stock.symbol] ?? customBenchmarks[stock.symbol] ?? '';
+                                    if (currentVal !== '' || customBenchmarks[stock.symbol]) {
+                                      handleSetBenchmark(stock.symbol, currentVal);
+                                    }
                                   }
                                 }}
                                 className="w-full text-[10px] bg-bg-input border border-border rounded px-1.5 py-1 outline-none focus:border-primary font-bold text-text-secondary placeholder:text-text-muted/50"
                               />
-                              {(benchmarkInputs[stock.symbol] || customBenchmarks[stock.symbol]) && (
+                              {(stock.symbol in benchmarkInputs || customBenchmarks[stock.symbol]) && (
                                 <button
-                                  onClick={() => handleSetBenchmark(stock.symbol, benchmarkInputs[stock.symbol] || customBenchmarks[stock.symbol])}
+                                  onClick={() => handleSetBenchmark(stock.symbol, benchmarkInputs[stock.symbol] ?? customBenchmarks[stock.symbol] ?? '')}
                                   className="text-primary shrink-0"
                                   title="确认基准"
                                 >
