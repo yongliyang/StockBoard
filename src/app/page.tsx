@@ -14,6 +14,7 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowUpDown,
   Calendar
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -76,6 +77,19 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState('自选股票');
   const [startDate, setStartDate] = useState<Date | null>(subMonths(startOfToday(), 3));
   const [endDate, setEndDate] = useState<Date | null>(startOfToday());
+
+  // 排序
+  const [sortBy, setSortBy] = useState<'totalReturn' | 'alphaReturn'>('totalReturn');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (column: 'totalReturn' | 'alphaReturn') => {
+    if (sortBy === column) {
+      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+  };
 
   // 自定义基准（持久化）
   const [customBenchmarks, setCustomBenchmarks] = usePersistedState<Record<string, string>>('stockboard-custom-benchmarks', {});
@@ -329,6 +343,15 @@ export default function Home() {
       return { ...stock, history: pctHistory, benchmarkHistory: pctBenchmarkHistory, alphaHistory, totalReturn, benchmarkReturn, alphaReturn };
     });
   }, [stocks, dateRange, startDate, endDate]);
+
+  // 排序后的股票列表
+  const sortedStocks = useMemo(() => {
+    return [...processedStocks].sort((a, b) => {
+      const aVal = sortBy === 'totalReturn' ? a.totalReturn : a.alphaReturn;
+      const bVal = sortBy === 'totalReturn' ? b.totalReturn : b.alphaReturn;
+      return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+  }, [processedStocks, sortBy, sortOrder]);
 
   const handleAddStock = (symbol: string) => {
     if (!watchlist.includes(symbol)) {
@@ -597,10 +620,26 @@ export default function Home() {
               <thead>
                 <tr className="text-[11px] font-bold text-text-tertiary border-b border-border-light bg-card">
                   <th className="w-[180px] px-6 py-3 uppercase tracking-wider font-semibold">股票名称</th>
-                  <th className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold">价格走势</th>
+                  <th
+                    className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleSort('totalReturn')}
+                  >
+                    <span className="flex items-center gap-1">
+                      价格走势
+                      <ArrowUpDown className={cn("w-3 h-3 transition-colors", sortBy === 'totalReturn' ? "text-primary" : "text-text-muted")} />
+                    </span>
+                  </th>
                   <th className="w-[140px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha">行业基准</th>
                   <th className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold">行业趋势</th>
-                  <th className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha">去除基准趋势</th>
+                  <th
+                    className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleSort('alphaReturn')}
+                  >
+                    <span className="flex items-center gap-1">
+                      去除基准趋势
+                      <ArrowUpDown className={cn("w-3 h-3 transition-colors", sortBy === 'alphaReturn' ? "text-alpha" : "opacity-40")} />
+                    </span>
+                  </th>
                   <th className="w-[100px] px-6 py-3 uppercase tracking-wider font-semibold text-right">当前价</th>
                   <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">涨跌幅</th>
                   <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">成交量</th>
@@ -649,7 +688,7 @@ export default function Home() {
                   {loading ? (
                     loadingRows
                   ) : (
-                    processedStocks.map((stock) => (
+                    sortedStocks.map((stock) => (
                       <motion.tr
                         layout
                         initial={{ opacity: 0 }}
