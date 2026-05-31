@@ -11,7 +11,7 @@ StockBoard 是一款基于 Next.js 开发的专业级自选股监控工具。它
 - **灵活的周期与区间**: 
   - 支持 **日线/周线/月线** 切换。
   - 支持 **1M/3M/6M/1Y** 快捷区间及**自定义日历**日期回顾。
-- **真实数据驱动**: 深度对接 Alpha Vantage 与 EODHD 公开 API 接口。
+- **真实数据驱动**: 深度对接 Finnhub 公开 API 接口（免费 60 次/分钟），辅以 stock-sdk 覆盖 A 股与港股。
 - **智能搜索**: 支持代码或名称模糊搜索并实时添加到自选列表。
 
 ## 🛠️ 环境要求
@@ -31,15 +31,15 @@ npm install
 
 ### 2. 配置环境变量
 
-在项目根目录创建一个 `.env` 文件，并添加您的 Alpha Vantage API Key：
+在项目根目录创建一个 `.env` 文件，并添加您的 Finnhub API Key：
 
 ```env
-ALPHA_VANTAGE_API_KEY=您的_API_KEY
+FINNHUB_API_KEY=您的_API_KEY
 ```
 
-> **注意**: 
-> - 如果未设置 KEY，系统将自动回退到 EODHD 公开接口（仅支持部分美股）或显示无数据提示。
-> - 您可以前往 [Alpha Vantage 官网](https://www.alphavantage.co/support/#api-key) 免费申请。
+> **注意**:
+> - 如果未设置 KEY，系统将提示无数据。
+> - 您可以前往 [Finnhub 官网](https://finnhub.io/register) 免费注册并获取 API Key（免费版 60 次/分钟）。
 
 ### 3. 启动开发服务器
 
@@ -55,7 +55,7 @@ npm run dev
 
 1. 将代码推送至您的 GitHub 仓库。
 2. 在 Vercel 中导入该仓库。
-3. **关键步骤**: 在 Vercel 控制台的 **Environment Variables** 中添加 `ALPHA_VANTAGE_API_KEY`。
+3. **关键步骤**: 在 Vercel 控制台的 **Environment Variables** 中添加 `FINNHUB_API_KEY`。
 4. 点击部署，完成后即可通过生成的 URL 访问。
 
 ### VPS 部署（Ubuntu 为例）
@@ -106,12 +106,12 @@ npm install
 
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，填入你的 Alpha Vantage API Key
+# 编辑 .env 文件，填入你的 Finnhub API Key
 nano .env
 ```
 
 ```env
-ALPHA_VANTAGE_API_KEY=您的_API_KEY
+FINNHUB_API_KEY=您的_API_KEY
 ```
 
 #### 5. 构建并启动

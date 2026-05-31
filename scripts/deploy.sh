@@ -112,8 +112,8 @@ gather_input() {
     read -r -p "Git 仓库地址 [${DEFAULT_REPO}]: " REPO_URL
     REPO_URL="${REPO_URL:-$DEFAULT_REPO}"
 
-    # Alpha Vantage API Key
-    read -r -p "Alpha Vantage API Key（留空则跳过，后续可手动配置）: " API_KEY
+    # Finnhub API Key
+    read -r -p "Finnhub API Key（留空则跳过，后续可手动配置）: " API_KEY
     API_KEY="${API_KEY:-}"
 
     echo ""
@@ -212,7 +212,7 @@ setup_env() {
     else
         log_info "创建 .env 文件..."
         cat > "$env_file" <<- EOF
-ALPHA_VANTAGE_API_KEY=${API_KEY}
+FINNHUB_API_KEY=${API_KEY}
 EOF
         log_ok ".env 文件已创建"
     fi

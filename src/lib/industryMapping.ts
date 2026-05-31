@@ -2,8 +2,8 @@ import { STOCK_METADATA } from './mockData';
 
 export interface BenchmarkConfig {
   /** 数据源类型 */
-  source: 'alpha-vantage' | 'stock-sdk';
-  /** ETF 代码 (alpha-vantage 用) 或 板块代码 (stock-sdk 用) */
+  source: 'finnhub' | 'stock-sdk';
+  /** ETF 代码 (finnhub 用) 或 板块代码 (stock-sdk 用) */
   symbol: string;
   /** 基准名称（显示用） */
   name: string;
@@ -17,13 +17,13 @@ export interface BenchmarkConfig {
  */
 const BENCHMARK_MAP: Record<string, Record<string, BenchmarkConfig>> = {
   US: {
-    '科技': { source: 'alpha-vantage', symbol: 'XLK', name: '科技行业 ETF (XLK)' },
-    '汽车': { source: 'alpha-vantage', symbol: 'XLY', name: '可选消费 ETF (XLY)' },
-    '互联网': { source: 'alpha-vantage', symbol: 'FDN', name: '互联网指数 ETF (FDN)' },
-    '消费': { source: 'alpha-vantage', symbol: 'XLP', name: '必需消费 ETF (XLP)' },
-    '金融': { source: 'alpha-vantage', symbol: 'XLF', name: '金融行业 ETF (XLF)' },
-    '医药': { source: 'alpha-vantage', symbol: 'XLV', name: '医疗行业 ETF (XLV)' },
-    '能源': { source: 'alpha-vantage', symbol: 'XLE', name: '能源行业 ETF (XLE)' },
+    '科技': { source: 'finnhub', symbol: 'XLK', name: '科技行业 ETF (XLK)' },
+    '汽车': { source: 'finnhub', symbol: 'XLY', name: '可选消费 ETF (XLY)' },
+    '互联网': { source: 'finnhub', symbol: 'FDN', name: '互联网指数 ETF (FDN)' },
+    '消费': { source: 'finnhub', symbol: 'XLP', name: '必需消费 ETF (XLP)' },
+    '金融': { source: 'finnhub', symbol: 'XLF', name: '金融行业 ETF (XLF)' },
+    '医药': { source: 'finnhub', symbol: 'XLV', name: '医疗行业 ETF (XLV)' },
+    '能源': { source: 'finnhub', symbol: 'XLE', name: '能源行业 ETF (XLE)' },
   },
   SH: {
     '消费': { source: 'stock-sdk', symbol: 'BK1575', name: '白酒Ⅲ板块' },
@@ -36,8 +36,8 @@ const BENCHMARK_MAP: Record<string, Record<string, BenchmarkConfig>> = {
     '科技': { source: 'stock-sdk', symbol: 'BK1553', name: '计算机设备板块' },
   },
   HK: {
-    '科技': { source: 'alpha-vantage', symbol: 'XLK', name: '科技行业 ETF (XLK)' },
-    '金融': { source: 'alpha-vantage', symbol: 'XLF', name: '金融行业 ETF (XLF)' },
+    '科技': { source: 'finnhub', symbol: 'XLK', name: '科技行业 ETF (XLK)' },
+    '金融': { source: 'finnhub', symbol: 'XLF', name: '金融行业 ETF (XLF)' },
   },
 };
 
@@ -59,7 +59,7 @@ export function getBenchmarkConfig(symbol: string): BenchmarkConfig | null {
  */
 export function getCustomBenchmarkConfig(benchmarkSymbol: string): BenchmarkConfig {
   return {
-    source: 'alpha-vantage',
+    source: 'finnhub',
     symbol: benchmarkSymbol.toUpperCase(),
     name: benchmarkSymbol.toUpperCase(),
   };

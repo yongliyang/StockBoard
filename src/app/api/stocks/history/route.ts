@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const AV_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 60;
@@ -18,20 +18,20 @@ export async function GET(request: Request) {
     return NextResponse.json(cached.data);
   }
 
-  // 1. Alpha Vantage (US 股票/ETF + 部分国际股票)
-  if (AV_API_KEY && AV_API_KEY !== 'demo') {
+  // 1. Finnhub (全球股票/ETF)
+  if (FINNHUB_API_KEY) {
     try {
-      const avResult = await fetchAlphaVantage(symbol, interval, AV_API_KEY);
-      if (avResult) {
-        cache.set(cacheKey, { data: avResult, timestamp: Date.now() });
-        return NextResponse.json(avResult);
+      const result = await fetchViaFinnhub(symbol, interval);
+      if (result) {
+        cache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return NextResponse.json(result);
       }
     } catch (e) {
-      console.warn(`Alpha Vantage 失败: ${symbol}`);
+      console.warn(`Finnhub 失败: ${symbol}`);
     }
   }
 
-  // 2. stock-sdk fallback (A股指数/港股指数)
+  // 2. stock-sdk fallback (A股/港股)
   if (market === 'SH' || market === 'SZ' || market === 'HK') {
     try {
       const sdkResult = await fetchViaStockSDK(originalSymbol || symbol, interval, market);
@@ -44,47 +44,54 @@ export async function GET(request: Request) {
     }
   }
 
-  // 3. EODHD Demo (仅 US)
-  try {
-    const publicResult = await fetchPublicEODHD(symbol, interval);
-    if (publicResult) {
-      cache.set(cacheKey, { data: publicResult, timestamp: Date.now() });
-      return NextResponse.json(publicResult);
-    }
-  } catch (e) {
-    console.warn('公开 API 失败');
-  }
-
-  // 4. 最终失败
+  // 3. 最终失败
   return NextResponse.json({
     error: '无法获取真实市场数据，请检查 API 配置或稍后再试。',
     history: []
   }, { status: 200 });
 }
 
-async function fetchAlphaVantage(symbol: string, interval: string, apiKey: string) {
-  const functionName = interval === 'monthly' ? 'TIME_SERIES_MONTHLY' : interval === 'weekly' ? 'TIME_SERIES_WEEKLY' : 'TIME_SERIES_DAILY';
-  const url = `https://www.alphavantage.co/query?function=${functionName}&symbol=${symbol}&apikey=${apiKey}`;
+/**
+ * 通过 Finnhub API 获取股票 K 线数据
+ * Finnhub 免费版 60 次/分钟，延迟约 15 分钟
+ */
+async function fetchViaFinnhub(symbol: string, interval: string) {
+  const resolutionMap: Record<string, string> = {
+    daily: 'D',
+    weekly: 'W',
+    monthly: 'M',
+  };
+  const resolution = resolutionMap[interval] || 'D';
+
+  // 计算时间范围，确保拿到足够的历史数据
+  const now = Math.floor(Date.now() / 1000);
+  const daysMap: Record<string, number> = { daily: 730, weekly: 1825, monthly: 3650 };
+  const from = now - (daysMap[interval] || 730) * 86400;
+
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${now}&token=${FINNHUB_API_KEY}`;
 
   const response = await fetch(url);
+  if (!response.ok) return null;
+
   const data = await response.json();
 
-  if (data['Note']) throw new Error('API 频率限制');
+  // s === "ok" 表示成功；s === "no_data" 表示无数据
+  if (data.s !== 'ok' || !Array.isArray(data.c) || data.c.length === 0) {
+    return null;
+  }
 
-  const timeSeriesKey = interval === 'daily' ? 'Time Series (Daily)' : interval === 'weekly' ? 'Weekly Time Series' : 'Monthly Time Series';
-  const timeSeries = data[timeSeriesKey];
+  const history = data.t.map((timestamp: number, i: number) => ({
+    date: new Date(timestamp * 1000).toISOString().split('T')[0],
+    price: data.c[i],
+  }));
 
-  if (!timeSeries) return null;
-
-  const history = Object.entries(timeSeries).map(([date, values]: [string, any]) => ({
-    date,
-    price: parseFloat(values['4. close']),
-  })).reverse();
+  // 按日期升序排列
+  history.sort((a: any, b: any) => a.date.localeCompare(b.date));
 
   return {
     symbol,
     history,
-    volume: (parseFloat(Object.values(timeSeries)[0] as any['5. volume']) / 10000).toFixed(2) + '万股',
+    volume: (data.v[data.v.length - 1] / 10000).toFixed(2) + '万股',
   };
 }
 
@@ -115,24 +122,5 @@ async function fetchViaStockSDK(symbol: string, interval: string, market: string
   return {
     history: kline.map((item: any) => ({ date: item.date, price: item.close })),
     volume: '--',
-  };
-}
-
-async function fetchPublicEODHD(symbol: string, interval: string) {
-  const url = `https://eodhd.com/api/eod/${symbol}.US?api_token=demo&fmt=json`;
-
-  const response = await fetch(url);
-  if (!response.ok) return null;
-
-  const data = await response.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
-
-  return {
-    symbol,
-    history: data.map((item: any) => ({
-      date: item.date,
-      price: item.close,
-    })),
-    volume: (data[data.length - 1].volume / 10000).toFixed(2) + '万股',
   };
 }
