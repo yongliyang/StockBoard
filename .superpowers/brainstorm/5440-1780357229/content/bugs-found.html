@@ -1,0 +1,109 @@
+<h2>Issues Found During Inspection</h2>
+<p class="subtitle">5 issues identified in the StockBoard dashboard</p>
+
+<div class="section">
+  <h3>#1: Duplicate Table Headers (Critical)</h3>
+  <p>Lines 649-654 in <code>page.tsx</code> duplicate columns 643-648. The table shows the last 6 columns (当前价 through 操作) twice, forcing a <code>min-w-[1840px]</code> layout.</p>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Current (Broken - 1840px wide)</div>
+      <div class="mockup-body">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;color:#444">
+          <thead>
+            <tr style="background:#fafafa;border-bottom:1px solid #eee;font-weight:700">
+              <th style="padding:6px 8px;text-align:left;white-space:nowrap">股票名称</th>
+              <th style="padding:6px 8px">价格走势</th>
+              <th style="padding:6px 8px">行业基准</th>
+              <th style="padding:6px 8px">行业趋势</th>
+              <th style="padding:6px 8px">去除基准</th>
+              <th style="padding:6px 8px;text-align:right">当前价</th>
+              <th style="padding:6px 8px;text-align:right">涨跌幅</th>
+              <th style="padding:6px 8px;text-align:right">成交量</th>
+              <th style="padding:6px 8px;text-align:right">总市值</th>
+              <th style="padding:6px 8px;text-align:right">年初至今</th>
+              <th style="padding:6px 8px;text-align:center">操作</th>
+              <th style="padding:6px 8px;text-align:right;background:#fdd">当前价</th>
+              <th style="padding:6px 8px;text-align:right;background:#fdd">涨跌幅</th>
+              <th style="padding:6px 8px;text-align:right;background:#fdd">成交量</th>
+              <th style="padding:6px 8px;text-align:right;background:#fdd">总市值</th>
+              <th style="padding:6px 8px;text-align:right;background:#fdd">年初至今</th>
+              <th style="padding:6px 8px;text-align:center;background:#fdd">操作</th>
+            </tr>
+          </thead>
+        </table>
+        <div style="margin-top:8px;font-size:11px;color:#e22d3a">Red = duplicate columns (lines 649-654)</div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header">Fixed ( ~1320px wide)</div>
+      <div class="mockup-body">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;color:#444">
+          <thead>
+            <tr style="background:#fafafa;border-bottom:1px solid #eee;font-weight:700">
+              <th style="padding:6px 8px;text-align:left;white-space:nowrap">股票名称</th>
+              <th style="padding:6px 8px">价格走势</th>
+              <th style="padding:6px 8px">行业基准</th>
+              <th style="padding:6px 8px">行业趋势</th>
+              <th style="padding:6px 8px">去除基准</th>
+              <th style="padding:6px 8px;text-align:right">当前价</th>
+              <th style="padding:6px 8px;text-align:right">涨跌幅</th>
+              <th style="padding:6px 8px;text-align:right">成交量</th>
+              <th style="padding:6px 8px;text-align:right">总市值</th>
+              <th style="padding:6px 8px;text-align:right">年初至今</th>
+              <th style="padding:6px 8px;text-align:center">操作</th>
+            </tr>
+          </thead>
+        </table>
+        <div style="margin-top:8px;font-size:11px;color:#00a846">Clean: 11 columns, 580px narrower</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>#2: Recharts Zero-Size Warning (14 occurrences)</h3>
+  <p>Sparkline components render with width/height -1 during loading/empty state. Caused by <code>ResponsiveContainer</code> rendering before parent has dimensions.</p>
+  <pre style="font-size:11px;background:#fff3cd;padding:8px;border-radius:4px;overflow-x:auto">The width(-1) and height(-1) of chart should be greater than 0,
+please check the style of container, or the props width(100%) and height(100%)</pre>
+</div>
+
+<div class="section">
+  <h3>#3: Bare API Error Display</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1">
+      <div class="mockup-header">Current Error State</div>
+      <div class="mockup-body">
+        <span style="font-size:9px;color:#e11d48;background:#fce4ec;padding:2px 6px;border-radius:3px">API Error</span>
+        <div style="font-size:10px;color:#ccc;margin-top:4px;font-style:italic">No Price Data</div>
+      </div>
+    </div>
+    <div class="mockup" style="flex:1">
+      <div class="mockup-header">Improved Error State</div>
+      <div class="mockup-body">
+        <div style="font-size:9px;color:#e11d48;background:#fce4ec;padding:2px 6px;border-radius:3px;display:inline-flex;gap:4px;align-items:center">
+          <span>&#9888;</span> API 限流
+          <span style="font-size:9px;opacity:0.7">(自动重试中...)</span>
+        </div>
+        <div style="font-size:10px;color:#999;margin-top:4px">
+          数据暂不可用 <span style="cursor:pointer;text-decoration:underline;color:#2b72ff">重试</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>#4: Accessibility - Inputs Missing IDs</h3>
+  <p>10 benchmark input fields lack <code>id</code>/<code>name</code> attributes, flagged by browser as a11y issues.</p>
+</div>
+
+<div class="section">
+  <h3>#5: Other Minor Issues</h3>
+  <ul>
+    <li>No dark mode support</li>
+    <li>Missing responsive breakpoints (table requires 1320px+)</li>
+    <li>Sticky header only applies to nav, not table headers</li>
+  </ul>
+</div>

@@ -22,9 +22,17 @@ export function Sparkline({
   const max = Math.max(...prices);
   const padding = (max - min) * 0.1;
 
+  if (data.length < 2) {
+    return (
+      <div style={{ height: `${height}px`, minWidth: 200 }} className="w-full flex items-center justify-center">
+        <span className="text-[10px] text-zinc-300 font-medium">--</span>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ height: `${height}px` }} className="w-full min-w-[200px]">
-      <ResponsiveContainer width="100%" height="100%">
+    <div style={{ height: `${height}px`, minWidth: 200 }} className="w-full">
+      <ResponsiveContainer width="100%" height={height} minWidth={200}>
         <AreaChart data={data}>
           <defs>
             <linearGradient id={`gradient-${color}`} x1="0" y1="0" x2="0" y2="1">

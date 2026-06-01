@@ -3,9 +3,25 @@ import { getBenchmarkConfig, getCustomBenchmarkConfig } from '@/lib/industryMapp
 import { STOCK_METADATA } from '@/lib/mockData';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 1000 * 60 * 60;
+// Alpha Vantage 免费版限流：1 次/秒
+// 使用 Promise 链确保并发请求按顺序串行化
+let alphaVantageQueue: Promise<void> = Promise.resolve();
+function alphaVantageThrottle(): Promise<void> {
+  return alphaVantageQueue = alphaVantageQueue.then(
+    () => new Promise(resolve => setTimeout(resolve, 1200))
+  );
+}
+
+const cache = new Map<string, { data: any; date: string }>();
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function isCacheValid(entry: { date: string }): boolean {
+  return entry.date === today();
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -19,23 +35,29 @@ export async function GET(request: Request) {
 
   const cacheKey = `${symbol}-${interval}-${benchmarkSymbol}`;
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (cached && isCacheValid(cached)) {
     return NextResponse.json(cached.data);
   }
 
   // 自定义基准：直接用传入的 benchmarkSymbol 获取数据
   if (benchmarkSymbol) {
     const config = getCustomBenchmarkConfig(benchmarkSymbol);
+    let result: { history: Array<{ date: string; price: number }> } | null = null;
     try {
-      const result = await fetchViaFinnhub(config.symbol, interval);
-      if (result && result.history && result.history.length > 0) {
-        cache.set(cacheKey, { data: result, timestamp: Date.now() });
-        return NextResponse.json(result);
+      result = await fetchViaFinnhub(config.symbol, interval);
+    } catch {
+      // Finnhub 失败，尝试 Alpha Vantage 后备
+      try {
+        result = await fetchViaAlphaVantage(config.symbol, interval);
+      } catch {
+        // both failed
       }
-      return NextResponse.json({ error: `无法获取 ${config.name} 的行情数据`, history: [] });
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message || '获取行业基准数据失败', history: [] });
     }
+    if (result && result.history && result.history.length > 0) {
+      cache.set(cacheKey, { data: result, date: today() });
+      return NextResponse.json(result);
+    }
+    return NextResponse.json({ error: `无法获取 ${config.name} 的行情数据`, history: [] });
   }
 
   const config = getBenchmarkConfig(symbol);
@@ -51,7 +73,16 @@ export async function GET(request: Request) {
     let result: { history: Array<{ date: string; price: number }> } | null = null;
 
     if (config.source === 'finnhub') {
-      result = await fetchViaFinnhub(config.symbol, interval);
+      try {
+        result = await fetchViaFinnhub(config.symbol, interval);
+      } catch {
+        // Finnhub 失败，尝试 Alpha Vantage 后备
+        try {
+          result = await fetchViaAlphaVantage(config.symbol, interval);
+        } catch {
+          // both failed
+        }
+      }
     } else if (config.source === 'stock-sdk') {
       result = await fetchViaStockSDK(config.symbol, interval);
     }
@@ -60,7 +91,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `无法获取 ${config.name} 的行情数据`, history: [] });
     }
 
-    cache.set(cacheKey, { data: result, timestamp: Date.now() });
+    cache.set(cacheKey, { data: result, date: today() });
     return NextResponse.json(result);
   } catch (e: any) {
     console.error(`[Industry Benchmark Error] ${symbol}:`, e.message);
@@ -104,6 +135,53 @@ async function fetchViaFinnhub(symbol: string, interval: string) {
   }));
 
   history.sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+  return { history };
+}
+
+/**
+ * 通过 Alpha Vantage API 获取 K 线数据
+ * 作为 Finnhub 的免费后备方案
+ */
+async function fetchViaAlphaVantage(symbol: string, interval: string) {
+  if (!ALPHA_VANTAGE_API_KEY) {
+    throw new Error('Alpha Vantage API key 未配置');
+  }
+
+  const functionMap: Record<string, string> = {
+    daily: 'TIME_SERIES_DAILY',
+    weekly: 'TIME_SERIES_WEEKLY',
+    monthly: 'TIME_SERIES_MONTHLY',
+  };
+  const fn = functionMap[interval] || 'TIME_SERIES_DAILY';
+
+  const url = `https://www.alphavantage.co/query?function=${fn}&symbol=${symbol}&outputsize=compact&apikey=${ALPHA_VANTAGE_API_KEY}`;
+
+  await alphaVantageThrottle();
+
+  const response = await fetch(url);
+  if (!response.ok) return null;
+
+  const data = await response.json();
+
+  if (data['Note'] || data['Error Message'] || data['Information']) {
+    return null;
+  }
+
+  const timeSeriesKey = Object.keys(data).find(k =>
+    k.startsWith('Time Series') || k.startsWith('Weekly') || k.startsWith('Monthly')
+  );
+  if (!timeSeriesKey || !data[timeSeriesKey]) return null;
+
+  const timeSeries = data[timeSeriesKey];
+  const history = Object.entries(timeSeries)
+    .map(([date, values]: [string, any]) => ({
+      date,
+      price: parseFloat(values['4. close']),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (history.length === 0) return null;
 
   return { history };
 }

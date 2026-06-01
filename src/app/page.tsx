@@ -470,6 +470,8 @@ export default function Home() {
               <div className="flex items-center bg-bg-input rounded-md px-3 py-1.5 gap-2 border border-transparent focus-within:border-primary focus-within:bg-card focus-within:shadow-sm transition-all">
                 <Search className="w-3.5 h-3.5 text-text-muted" />
                 <input
+                  id="stock-search"
+                  name="stock-search"
                   type="text"
                   placeholder="搜索股票代码 (如 AAPL, 600519)..."
                   className="bg-transparent border-none text-xs w-64 outline-none placeholder:text-text-muted font-medium"
@@ -616,12 +618,12 @@ export default function Home() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1840px] table-fixed">
-              <thead>
-                <tr className="text-[11px] font-bold text-text-tertiary border-b border-border-light bg-card">
+            <table className="w-full text-left border-collapse min-w-[1780px] table-fixed">
+              <thead className="sticky top-14 z-30 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+                <tr className="text-[11px] font-bold text-text-tertiary border-b border-border bg-card">
                   <th className="w-[180px] px-6 py-3 uppercase tracking-wider font-semibold">股票名称</th>
                   <th
-                    className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold cursor-pointer select-none hover:text-foreground transition-colors"
+                    className="w-[280px] px-6 py-3 uppercase tracking-wider font-semibold cursor-pointer select-none hover:text-foreground transition-colors"
                     onClick={() => handleSort('totalReturn')}
                   >
                     <span className="flex items-center gap-1">
@@ -630,9 +632,9 @@ export default function Home() {
                     </span>
                   </th>
                   <th className="w-[140px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha">行业基准</th>
-                  <th className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold">行业趋势</th>
+                  <th className="w-[280px] px-6 py-3 uppercase tracking-wider font-semibold">行业趋势</th>
                   <th
-                    className="w-[300px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha cursor-pointer select-none hover:text-foreground transition-colors"
+                    className="w-[280px] px-6 py-3 uppercase tracking-wider font-semibold text-alpha cursor-pointer select-none hover:text-foreground transition-colors"
                     onClick={() => handleSort('alphaReturn')}
                   >
                     <span className="flex items-center gap-1">
@@ -640,12 +642,6 @@ export default function Home() {
                       <ArrowUpDown className={cn("w-3 h-3 transition-colors", sortBy === 'alphaReturn' ? "text-alpha" : "opacity-40")} />
                     </span>
                   </th>
-                  <th className="w-[100px] px-6 py-3 uppercase tracking-wider font-semibold text-right">当前价</th>
-                  <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">涨跌幅</th>
-                  <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">成交量</th>
-                  <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">总市值</th>
-                  <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">年初至今</th>
-                  <th className="w-[80px] px-6 py-3 font-semibold text-center">操作</th>
                   <th className="w-[100px] px-6 py-3 uppercase tracking-wider font-semibold text-right">当前价</th>
                   <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">涨跌幅</th>
                   <th className="w-[110px] px-6 py-3 uppercase tracking-wider font-semibold text-right">成交量</th>
@@ -705,10 +701,13 @@ export default function Home() {
                               <span className="text-[11px] text-text-tertiary font-mono font-medium tracking-tight">{stock.symbol}</span>
                             </div>
                             {stock.error && (
-                              <span className="text-[9px] text-rose-500 font-bold mt-1 uppercase">
+                              <span className="inline-flex items-center gap-1 text-[9px] text-rose-600 font-bold mt-1 uppercase bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 max-w-fit">
+                                <span className="w-1 h-1 rounded-full bg-rose-500" />
                                 {retryInfo[stock.symbol] != null && retryInfo[stock.symbol] <= 10
                                   ? `重试中 ${retryInfo[stock.symbol]}/10`
-                                  : 'API Error'}
+                                  : retryInfo[stock.symbol] && retryInfo[stock.symbol] > 10
+                                  ? '重试已达上限'
+                                  : 'API 受限'}
                               </span>
                             )}
                           </div>
@@ -728,7 +727,13 @@ export default function Home() {
                               </span>
                               </>
                             ) : (
-                              <div className="text-[10px] text-zinc-300 font-bold italic">No Price Data</div>
+                              <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-medium">
+                                <span>暂无数据</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); retryCounts.current[stock.symbol] = 0; retryStock(stock.symbol); }}
+                                  className="text-primary hover:underline text-[9px] font-bold cursor-pointer"
+                                >重试</button>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -754,6 +759,8 @@ export default function Home() {
                           ) : (
                             <div className="flex items-center gap-1">
                               <input
+                                id={`benchmark-${stock.symbol}`}
+                                name={`benchmark-${stock.symbol}`}
                                 type="text"
                                 placeholder="输入基准代码"
                                 value={stock.symbol in benchmarkInputs ? benchmarkInputs[stock.symbol] : (customBenchmarks[stock.symbol] || '')}

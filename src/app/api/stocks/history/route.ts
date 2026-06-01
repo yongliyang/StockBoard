@@ -1,9 +1,25 @@
 import { NextResponse } from 'next/server';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
+const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 1000 * 60 * 60;
+const cache = new Map<string, { data: any; date: string }>();
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function isCacheValid(entry: { date: string }): boolean {
+  return entry.date === today();
+}
+
+// Alpha Vantage 免费版限流：1 次/秒，25 次/天
+// 使用 Promise 链确保并发请求按顺序串行化
+let alphaVantageQueue: Promise<void> = Promise.resolve();
+function alphaVantageThrottle(): Promise<void> {
+  return alphaVantageQueue = alphaVantageQueue.then(
+    () => new Promise(resolve => setTimeout(resolve, 1200))
+  );
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -14,7 +30,7 @@ export async function GET(request: Request) {
 
   const cacheKey = `${symbol}-${interval}`;
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (cached && isCacheValid(cached)) {
     return NextResponse.json(cached.data);
   }
 
@@ -23,7 +39,7 @@ export async function GET(request: Request) {
     try {
       const result = await fetchViaFinnhub(symbol, interval);
       if (result) {
-        cache.set(cacheKey, { data: result, timestamp: Date.now() });
+        cache.set(cacheKey, { data: result, date: today() });
         return NextResponse.json(result);
       }
     } catch (e) {
@@ -31,12 +47,25 @@ export async function GET(request: Request) {
     }
   }
 
-  // 2. stock-sdk fallback (A股/港股)
+  // 2. Alpha Vantage fallback (全球股票/ETF)
+  if (ALPHA_VANTAGE_API_KEY) {
+    try {
+      const result = await fetchViaAlphaVantage(symbol, interval);
+      if (result) {
+        cache.set(cacheKey, { data: result, date: today() });
+        return NextResponse.json(result);
+      }
+    } catch (e) {
+      console.warn(`Alpha Vantage 失败: ${symbol}`);
+    }
+  }
+
+  // 3. stock-sdk fallback (A股/港股)
   if (market === 'SH' || market === 'SZ' || market === 'HK') {
     try {
       const sdkResult = await fetchViaStockSDK(originalSymbol || symbol, interval, market);
       if (sdkResult) {
-        cache.set(cacheKey, { data: sdkResult, timestamp: Date.now() });
+        cache.set(cacheKey, { data: sdkResult, date: today() });
         return NextResponse.json(sdkResult);
       }
     } catch (e) {
@@ -122,5 +151,58 @@ async function fetchViaStockSDK(symbol: string, interval: string, market: string
   return {
     history: kline.map((item: any) => ({ date: item.date, price: item.close })),
     volume: '--',
+  };
+}
+
+/**
+ * 通过 Alpha Vantage API 获取股票 K 线数据
+ * 免费版 25 次/天，作为 Finnhub 的后备方案
+ */
+async function fetchViaAlphaVantage(symbol: string, interval: string) {
+  const functionMap: Record<string, string> = {
+    daily: 'TIME_SERIES_DAILY',
+    weekly: 'TIME_SERIES_WEEKLY',
+    monthly: 'TIME_SERIES_MONTHLY',
+  };
+  const fn = functionMap[interval] || 'TIME_SERIES_DAILY';
+
+  const url = `https://www.alphavantage.co/query?function=${fn}&symbol=${symbol}&outputsize=compact&apikey=${ALPHA_VANTAGE_API_KEY}`;
+
+  // 免费版 1 次/秒限流
+  await alphaVantageThrottle();
+
+  const response = await fetch(url);
+  if (!response.ok) return null;
+
+  const data = await response.json();
+
+  // Alpha Vantage returns error messages in a "Note" or "Error Message" key
+  if (data['Note'] || data['Error Message'] || data['Information']) {
+    console.warn(`Alpha Vantage API 限流: ${symbol} - ${data['Note'] || data['Error Message'] || data['Information']}`);
+    return null;
+  }
+
+  const timeSeriesKey = Object.keys(data).find(k => k.startsWith('Time Series') || k.startsWith('Weekly') || k.startsWith('Monthly'));
+  if (!timeSeriesKey || !data[timeSeriesKey]) return null;
+
+  const timeSeries = data[timeSeriesKey];
+  const history = Object.entries(timeSeries)
+    .map(([date, values]: [string, any]) => ({
+      date,
+      price: parseFloat(values['4. close']),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (history.length === 0) return null;
+
+  const lastClose = history[history.length - 1]?.price || 0;
+  const prevClose = history.length > 1 ? history[history.length - 2]?.price : lastClose;
+
+  return {
+    history,
+    volume: '--',
+    currentPrice: lastClose,
+    changeAmount: lastClose - prevClose,
+    changePercent: prevClose !== 0 ? ((lastClose - prevClose) / prevClose) * 100 : 0,
   };
 }
